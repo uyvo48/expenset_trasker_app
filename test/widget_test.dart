@@ -1,30 +1,52 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:expenset_tracker/core/network/dio_client.dart';
+import 'package:expenset_tracker/features/auth/data/datasources/auth_local_data_source.dart';
+import 'package:expenset_tracker/features/auth/data/datasources/auth_remote_data_source.dart';
+import 'package:expenset_tracker/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:expenset_tracker/features/auth/domain/repositories/auth_repository.dart';
+import 'package:expenset_tracker/features/auth/domain/usecases/change_password.dart';
+import 'package:expenset_tracker/features/auth/domain/usecases/clear_tokens.dart';
+import 'package:expenset_tracker/features/auth/domain/usecases/get_saved_tokens.dart';
+import 'package:expenset_tracker/features/auth/domain/usecases/login_user.dart';
+import 'package:expenset_tracker/features/auth/domain/usecases/refresh_access_token.dart';
+import 'package:expenset_tracker/features/auth/domain/usecases/register_user.dart';
+import 'package:expenset_tracker/features/auth/domain/usecases/save_access_token.dart';
+import 'package:expenset_tracker/features/auth/domain/usecases/save_tokens.dart';
+import 'package:expenset_tracker/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:expenset_tracker/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('shows login form when no session exists', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    DioClient.initialize();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(ExpenseTrackerApp(controller: _buildController()));
+    await tester.pumpAndSettle();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Đăng nhập'), findsWidgets);
+    expect(find.text('Email'), findsOneWidget);
+    expect(find.text('Mật khẩu'), findsOneWidget);
   });
+}
+
+AuthController _buildController([AuthRepository? repository]) {
+  repository ??= AuthRepositoryImpl(
+    remoteDataSource: AuthRemoteDataSourceImpl(),
+    localDataSource: AuthLocalDataSourceImpl(),
+  );
+
+  return AuthController(
+    getSavedTokens: GetSavedTokens(repository),
+    saveTokens: SaveTokens(repository),
+    saveAccessToken: SaveAccessToken(repository),
+    clearTokens: ClearTokens(repository),
+    registerUser: RegisterUser(repository),
+    loginUser: LoginUser(repository),
+    refreshAccessToken: RefreshAccessToken(repository),
+    changePassword: ChangePassword(repository),
+  );
 }

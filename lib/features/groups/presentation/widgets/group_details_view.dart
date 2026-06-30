@@ -44,13 +44,14 @@ class _GroupDetailsViewState extends State<GroupDetailsView> with SingleTickerPr
 
   void _showAddMemberDialog(GroupModel group) {
     final groupsBloc = context.read<GroupsBloc>();
+    final groupId = widget.groupId; // use widget.groupId directly, not group.id
     showDialog<({String? email, String? guestName})>(
       context: context,
       builder: (context) => const _AddMemberDialog(),
     ).then((result) {
       if (result != null) {
         groupsBloc.add(GroupAddMemberRequested(
-              groupId: group.id,
+              groupId: groupId,
               email: result.email,
               guestName: result.guestName,
             ));
@@ -642,18 +643,32 @@ class _BillFormDialogState extends State<_BillFormDialog> {
     final List<Map<String, dynamic>> splits = [];
 
     if (_splitMethod == 'equal') {
+      // Collect selected members first
+      final selectedMemberIds = <int>[];
       for (int i = 0; i < members.length; i++) {
         if (_selectedMembers[i]) {
-          splits.add({
-            'group_member_id': members[i].id,
-          });
+          selectedMemberIds.add(members[i].id);
         }
       }
-      if (splits.isEmpty) {
+      if (selectedMemberIds.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Vui lòng chọn ít nhất 1 thành viên chịu nợ')),
         );
         return;
+      }
+
+      // Calculate equal share — backend validates split_total == bill_amount
+      final count = selectedMemberIds.length;
+      final baseShare = totalAmount ~/ count;
+      final remainder = totalAmount % count;
+
+      for (int i = 0; i < selectedMemberIds.length; i++) {
+        // Give +1 to the first `remainder` members to handle non-divisible amounts
+        final share = baseShare + (i < remainder ? 1 : 0);
+        splits.add({
+          'group_member_id': selectedMemberIds[i],
+          'amount': share,
+        });
       }
     } else {
       int sum = 0;

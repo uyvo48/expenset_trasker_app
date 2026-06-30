@@ -107,60 +107,43 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
 
     try {
       final List<TransactionModel> transactions;
-      final hasKeyword = event.filter.keyword != null && event.filter.keyword!.trim().isNotEmpty;
+      
+      // Fetch all transactions and filter client-side to ensure 100% correctness and avoid server-side search bugs / 400 errors
+      final rawTransactions = await _transactionsRemoteDataSource.getTransactions();
 
       if (event.filter.isEmpty) {
-        transactions = await _transactionsRemoteDataSource.getTransactions();
-      } else if (hasKeyword) {
-        // Có từ khóa -> gọi API search của server (với tham số 'q')
-        final rawTransactions = await _transactionsRemoteDataSource.searchTransactions(
-          filter: event.filter,
-        );
-        transactions = rawTransactions.where((t) {
-          if (event.filter.category != null && event.filter.category!.trim().isNotEmpty) {
-            final filterCat = event.filter.category!.trim().toLowerCase();
-            if (!t.category.toLowerCase().contains(filterCat)) {
-              return false;
-            }
-          }
-          if (event.filter.type != null) {
-            if (t.type != event.filter.type) {
-              return false;
-            }
-          }
-          if (event.filter.startDate != null) {
-            if (t.date != null && t.date!.isBefore(event.filter.startDate!)) {
-              return false;
-            }
-          }
-          if (event.filter.endDate != null) {
-            if (t.date != null && t.date!.isAfter(event.filter.endDate!)) {
-              return false;
-            }
-          }
-          return true;
-        }).toList();
+        transactions = rawTransactions;
       } else {
-        // Không có từ khóa tìm kiếm nhưng có lọc theo category, type hoặc date range
-        // -> Gọi getTransactions để lấy tất cả giao dịch, sau đó lọc ở client-side
-        final rawTransactions = await _transactionsRemoteDataSource.getTransactions();
         transactions = rawTransactions.where((t) {
+          // 1. Keyword search (looks in description and category)
+          if (event.filter.keyword != null && event.filter.keyword!.trim().isNotEmpty) {
+            final filterKw = event.filter.keyword!.trim().toLowerCase();
+            final descMatches = t.description.toLowerCase().contains(filterKw);
+            final catMatches = t.category.toLowerCase().contains(filterKw);
+            if (!descMatches && !catMatches) {
+              return false;
+            }
+          }
+          // 2. Category filter
           if (event.filter.category != null && event.filter.category!.trim().isNotEmpty) {
             final filterCat = event.filter.category!.trim().toLowerCase();
             if (!t.category.toLowerCase().contains(filterCat)) {
               return false;
             }
           }
+          // 3. Type filter
           if (event.filter.type != null) {
             if (t.type != event.filter.type) {
               return false;
             }
           }
+          // 4. Start date filter
           if (event.filter.startDate != null) {
             if (t.date != null && t.date!.isBefore(event.filter.startDate!)) {
               return false;
             }
           }
+          // 5. End date filter
           if (event.filter.endDate != null) {
             if (t.date != null && t.date!.isAfter(event.filter.endDate!)) {
               return false;

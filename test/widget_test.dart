@@ -14,7 +14,7 @@ import 'package:expenset_tracker/features/auth/domain/usecases/refresh_access_to
 import 'package:expenset_tracker/features/auth/domain/usecases/register_user.dart';
 import 'package:expenset_tracker/features/auth/domain/usecases/save_access_token.dart';
 import 'package:expenset_tracker/features/auth/domain/usecases/save_tokens.dart';
-import 'package:expenset_tracker/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:expenset_tracker/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:expenset_tracker/main.dart';
 
 void main() {
@@ -24,7 +24,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     DioClient.initialize();
 
-    await tester.pumpWidget(ExpenseTrackerApp(controller: _buildController()));
+    await tester.pumpWidget(ExpenseTrackerApp(authBloc: _buildAuthBloc()));
     await tester.pumpAndSettle();
 
     expect(find.text('Đăng nhập'), findsWidgets);
@@ -33,13 +33,13 @@ void main() {
   });
 }
 
-AuthController _buildController([AuthRepository? repository]) {
+AuthBloc _buildAuthBloc([AuthRepository? repository]) {
   repository ??= AuthRepositoryImpl(
     remoteDataSource: AuthRemoteDataSourceImpl(),
     localDataSource: AuthLocalDataSourceImpl(),
   );
 
-  return AuthController(
+  return AuthBloc(
     getSavedTokens: GetSavedTokens(repository),
     saveTokens: SaveTokens(repository),
     saveAccessToken: SaveAccessToken(repository),
@@ -48,5 +48,5 @@ AuthController _buildController([AuthRepository? repository]) {
     loginUser: LoginUser(repository),
     refreshAccessToken: RefreshAccessToken(repository),
     changePassword: ChangePassword(repository),
-  );
+  )..add(const AuthInitializeRequested());
 }

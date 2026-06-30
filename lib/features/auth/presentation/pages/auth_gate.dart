@@ -1,60 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../controllers/auth_controller.dart';
+import '../../../home/presentation/bloc/home_bloc.dart';
+import '../bloc/auth_bloc.dart';
 import 'auth_page.dart';
 import 'home_page.dart';
 
-class AuthGate extends StatefulWidget {
-  const AuthGate({
-    super.key,
-    required this.controller,
-  });
-
-  final AuthController controller;
-
-  @override
-  State<AuthGate> createState() => _AuthGateState();
-}
-
-class _AuthGateState extends State<AuthGate> {
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_onControllerChanged);
-    widget.controller.initialize();
-  }
-
-  @override
-  void didUpdateWidget(covariant AuthGate oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_onControllerChanged);
-      widget.controller.addListener(_onControllerChanged);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_onControllerChanged);
-    super.dispose();
-  }
-
-  void _onControllerChanged() {
-    if (mounted) setState(() {});
-  }
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
-    if (widget.controller.isInitializing) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    return BlocBuilder<AuthBloc, AuthState>(
+      builder: (context, state) {
+        if (state.isInitializing) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-    if (!widget.controller.isAuthenticated) {
-      return AuthPage(controller: widget.controller);
-    }
+        if (!state.isAuthenticated) {
+          return const AuthPage();
+        }
 
-    return HomePage(controller: widget.controller);
+        return BlocProvider(
+          create: (context) => HomeBloc()..add(const HomeLoadRequested()),
+          child: const HomePage(),
+        );
+      },
+    );
   }
 }

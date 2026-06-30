@@ -1,20 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../../core/errors/app_exception.dart';
 import '../../../../core/logging/app_logger.dart';
-import '../../../home/presentation/controllers/home_controller.dart';
+import '../../../home/presentation/bloc/home_bloc.dart';
 import '../../../transactions/data/models/transaction_model.dart';
-import '../controllers/auth_controller.dart';
+import '../bloc/auth_bloc.dart';
 import '../widgets/auth_validators.dart';
 import '../widgets/password_field.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({
-    super.key,
-    required this.controller,
-  });
-
-  final AuthController controller;
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -30,26 +25,13 @@ class _HomePageState extends State<HomePage> {
   final _keywordController = TextEditingController();
   final _categoryFilterController = TextEditingController();
 
-  late final HomeController _homeController;
   int _selectedIndex = 0;
   TransactionKind? _typeFilter;
   DateTime? _startDateFilter;
   DateTime? _endDateFilter;
 
   @override
-  void initState() {
-    super.initState();
-    _homeController = HomeController();
-    widget.controller.addListener(_onControllerChanged);
-    _homeController.addListener(_onHomeControllerChanged);
-    _homeController.load();
-  }
-
-  @override
   void dispose() {
-    widget.controller.removeListener(_onControllerChanged);
-    _homeController.removeListener(_onHomeControllerChanged);
-    _homeController.dispose();
     _usernameController.dispose();
     _emailController.dispose();
     _oldPasswordController.dispose();
@@ -59,69 +41,42 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  void _onControllerChanged() {
-    if (mounted) setState(() {});
-  }
-
-  void _onHomeControllerChanged() {
-    final profile = _homeController.profile;
-    if (profile != null && _usernameController.text.isEmpty) {
-      _usernameController.text = profile.username;
-      _emailController.text = profile.email;
-    }
-
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _handleAction(Future<String> Function() action) async {
-    try {
-      final message = await action();
-      _showMessage(message);
-    } on AppException catch (error) {
-      _showMessage(error.message);
-    } catch (_) {
-      _showMessage('Không thể kết nối máy chủ');
-    }
-  }
-
-  Future<void> _changePassword() async {
-    if (!_passwordFormKey.currentState!.validate()) return;
-
-    await _handleAction(() async {
-      final message = await widget.controller.changePassword(
-        oldPassword: _oldPasswordController.text,
-        newPassword: _newPasswordController.text,
-      );
-      _oldPasswordController.clear();
-      _newPasswordController.clear();
-      return message;
-    });
-  }
-
-  Future<void> _updateProfile() async {
-    if (!_profileFormKey.currentState!.validate()) return;
-
-    await _handleAction(() {
-      return _homeController.updateProfile(
-        username: _usernameController.text.trim(),
-        email: _emailController.text.trim(),
-      );
-    });
-  }
-
-  Future<void> _applyTransactionFilter() async {
-    await _homeController.searchTransactions(
-      TransactionSearchFilter(
-        keyword: _keywordController.text,
-        category: _categoryFilterController.text,
-        type: _typeFilter,
-        startDate: _startDateFilter,
-        endDate: _endDateFilter,
-      ),
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
-  Future<void> _clearTransactionFilter() async {
+  void _changePassword() {
+    if (!_passwordFormKey.currentState!.validate()) return;
+    context.read<AuthBloc>().add(AuthChangePasswordRequested(
+          oldPassword: _oldPasswordController.text,
+          newPassword: _newPasswordController.text,
+        ));
+  }
+
+  void _updateProfile() {
+    if (!_profileFormKey.currentState!.validate()) return;
+    context.read<HomeBloc>().add(HomeUpdateProfileRequested(
+          username: _usernameController.text.trim(),
+          email: _emailController.text.trim(),
+        ));
+  }
+
+  void _applyTransactionFilter() {
+    context.read<HomeBloc>().add(HomeSearchTransactionsRequested(
+          TransactionSearchFilter(
+            keyword: _keywordController.text,
+            category: _categoryFilterController.text,
+            type: _typeFilter,
+            startDate: _startDateFilter,
+            endDate: _endDateFilter,
+          ),
+        ));
+  }
+
+  void _clearTransactionFilter() {
     _keywordController.clear();
     _categoryFilterController.clear();
     setState(() {
@@ -129,7 +84,7 @@ class _HomePageState extends State<HomePage> {
       _startDateFilter = null;
       _endDateFilter = null;
     });
-    await _homeController.searchTransactions(const TransactionSearchFilter());
+    context.read<HomeBloc>().add(const HomeSearchTransactionsRequested(TransactionSearchFilter()));
   }
 
   Future<void> _pickTransactionFilterDate({required bool isStartDate}) async {
@@ -173,6 +128,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _deleteTransaction(TransactionModel transaction) async {
+    final homeBloc = context.read<HomeBloc>();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -194,11 +150,11 @@ class _HomePageState extends State<HomePage> {
 
     if (confirmed != true) return;
 
-    await _handleAction(
-        () => _homeController.deleteTransaction(transaction.id));
+    homeBloc.add(HomeDeleteTransactionRequested(transaction.id));
   }
 
   Future<void> _showTransactionForm([TransactionModel? transaction]) async {
+    final homeBloc = context.read<HomeBloc>();
     final payload = await showDialog<TransactionPayload>(
       context: context,
       builder: (context) => _TransactionFormDialog(transaction: transaction),
@@ -206,123 +162,163 @@ class _HomePageState extends State<HomePage> {
 
     if (payload == null) return;
 
-    await _handleAction(() {
-      if (transaction == null) {
-        return _homeController.createTransaction(payload);
-      }
-
-      return _homeController.updateTransaction(
-        id: transaction.id,
-        payload: payload,
-      );
-    });
-  }
-
-  void _showMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    if (transaction == null) {
+      homeBloc.add(HomeCreateTransactionRequested(payload));
+    } else {
+      homeBloc.add(HomeUpdateTransactionRequested(
+            id: transaction.id,
+            payload: payload,
+          ));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isBusy = _homeController.isLoading || _homeController.isMutating;
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<AuthBloc, AuthState>(
+          listener: (context, state) {
+            if (state.errorMessage != null) {
+              _showMessage(state.errorMessage!);
+              context.read<AuthBloc>().add(const AuthClearMessageRequested());
+            }
+            if (state.successMessage != null) {
+              _showMessage(state.successMessage!);
+              if (state.successMessage == 'Đổi mật khẩu thành công' || state.successMessage!.contains('mật khẩu')) {
+                _oldPasswordController.clear();
+                _newPasswordController.clear();
+              }
+              context.read<AuthBloc>().add(const AuthClearMessageRequested());
+            }
+          },
+        ),
+        BlocListener<HomeBloc, HomeState>(
+          listenWhen: (previous, current) =>
+              previous.errorMessage != current.errorMessage ||
+              previous.mutationSuccessMessage != current.mutationSuccessMessage ||
+              previous.profile != current.profile,
+          listener: (context, state) {
+            if (state.errorMessage != null) {
+              _showMessage(state.errorMessage!);
+              context.read<HomeBloc>().add(const HomeClearMessageRequested());
+            }
+            if (state.mutationSuccessMessage != null) {
+              _showMessage(state.mutationSuccessMessage!);
+              context.read<HomeBloc>().add(const HomeClearMessageRequested());
+            }
+            final profile = state.profile;
+            if (profile != null && _usernameController.text.isEmpty) {
+              _usernameController.text = profile.username;
+              _emailController.text = profile.email;
+            }
+          },
+        ),
+      ],
+      child: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, authState) {
+          return BlocBuilder<HomeBloc, HomeState>(
+            builder: (context, homeState) {
+              final isBusy = homeState.isLoading || homeState.isMutating;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Expense Tracker'),
-        actions: [
-          IconButton(
-            tooltip: 'Tải lại',
-            onPressed: isBusy ? null : _homeController.load,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Đăng xuất',
-            onPressed: widget.controller.logout,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: _homeController.isLoading && _homeController.dashboard == null
-            ? const Center(child: CircularProgressIndicator())
-            : IndexedStack(
-                index: _selectedIndex,
-                children: [
-                  _PageShell(
-                    child: _DashboardView(controller: _homeController),
-                  ),
-                  _PageShell(
-                    child: _TransactionsView(
-                      controller: _homeController,
-                      keywordController: _keywordController,
-                      categoryController: _categoryFilterController,
-                      typeFilter: _typeFilter,
-                      startDate: _startDateFilter,
-                      endDate: _endDateFilter,
-                      onTypeChanged: (value) {
-                        setState(() => _typeFilter = value);
-                      },
-                      onPickStartDate: () {
-                        _pickTransactionFilterDate(isStartDate: true);
-                      },
-                      onPickEndDate: () {
-                        _pickTransactionFilterDate(isStartDate: false);
-                      },
-                      onClearStartDate: () {
-                        setState(() => _startDateFilter = null);
-                      },
-                      onClearEndDate: () {
-                        setState(() => _endDateFilter = null);
-                      },
-                      onApplyFilter: _applyTransactionFilter,
-                      onClearFilter: _clearTransactionFilter,
-                      onAdd: () => _showTransactionForm(),
-                      onEdit: _showTransactionForm,
-                      onDelete: _deleteTransaction,
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('Expense Tracker'),
+                  actions: [
+                    IconButton(
+                      tooltip: 'Tải lại',
+                      onPressed: isBusy ? null : () => context.read<HomeBloc>().add(const HomeLoadRequested()),
+                      icon: const Icon(Icons.refresh),
                     ),
-                  ),
-                  _PageShell(
-                    child: _ProfileView(
-                      authController: widget.controller,
-                      homeController: _homeController,
-                      profileFormKey: _profileFormKey,
-                      passwordFormKey: _passwordFormKey,
-                      usernameController: _usernameController,
-                      emailController: _emailController,
-                      oldPasswordController: _oldPasswordController,
-                      newPasswordController: _newPasswordController,
-                      onUpdateProfile: _updateProfile,
-                      onChangePassword: _changePassword,
+                    IconButton(
+                      tooltip: 'Đăng xuất',
+                      onPressed: () => context.read<AuthBloc>().add(const AuthLogoutRequested()),
+                      icon: const Icon(Icons.logout),
                     ),
-                  ),
-                ],
-              ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
+                  ],
+                ),
+                body: SafeArea(
+                  child: homeState.isLoading && homeState.dashboard == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : IndexedStack(
+                          index: _selectedIndex,
+                          children: [
+                            _PageShell(
+                              child: Column(
+                                children: [
+                                  _DashboardView(state: homeState),
+                                  const SizedBox(height: 32),
+                                  const Divider(),
+                                  const SizedBox(height: 24),
+                                  _TransactionsView(
+                                    state: homeState,
+                                    keywordController: _keywordController,
+                                    categoryController: _categoryFilterController,
+                                    typeFilter: _typeFilter,
+                                    startDate: _startDateFilter,
+                                    endDate: _endDateFilter,
+                                    onTypeChanged: (value) {
+                                      setState(() => _typeFilter = value);
+                                    },
+                                    onPickStartDate: () {
+                                      _pickTransactionFilterDate(isStartDate: true);
+                                    },
+                                    onPickEndDate: () {
+                                      _pickTransactionFilterDate(isStartDate: false);
+                                    },
+                                    onClearStartDate: () {
+                                      setState(() => _startDateFilter = null);
+                                    },
+                                    onClearEndDate: () {
+                                      setState(() => _endDateFilter = null);
+                                    },
+                                    onApplyFilter: _applyTransactionFilter,
+                                    onClearFilter: _clearTransactionFilter,
+                                    onAdd: () => _showTransactionForm(),
+                                    onEdit: _showTransactionForm,
+                                    onDelete: _deleteTransaction,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _PageShell(
+                              child: _ProfileView(
+                                authState: authState,
+                                homeState: homeState,
+                                profileFormKey: _profileFormKey,
+                                passwordFormKey: _passwordFormKey,
+                                usernameController: _usernameController,
+                                emailController: _emailController,
+                                oldPasswordController: _oldPasswordController,
+                                newPasswordController: _newPasswordController,
+                                onUpdateProfile: _updateProfile,
+                                onChangePassword: _changePassword,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+                bottomNavigationBar: NavigationBar(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: (index) {
+                    setState(() => _selectedIndex = index);
+                  },
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.space_dashboard_outlined),
+                      selectedIcon: Icon(Icons.space_dashboard),
+                      label: 'Tổng quan',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.person_outline),
+                      selectedIcon: Icon(Icons.person),
+                      label: 'Hồ sơ',
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
         },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.space_dashboard_outlined),
-            selectedIcon: Icon(Icons.space_dashboard),
-            label: 'Tổng quan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Giao dịch',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Hồ sơ',
-          ),
-        ],
       ),
     );
   }
@@ -350,14 +346,14 @@ class _PageShell extends StatelessWidget {
 }
 
 class _DashboardView extends StatelessWidget {
-  const _DashboardView({required this.controller});
+  const _DashboardView({required this.state});
 
-  final HomeController controller;
+  final HomeState state;
 
   @override
   Widget build(BuildContext context) {
-    final dashboard = controller.dashboard;
-    final errorMessage = controller.errorMessage;
+    final dashboard = state.dashboard;
+    final errorMessage = state.errorMessage;
 
     if (dashboard == null) {
       return _EmptyState(
@@ -373,41 +369,126 @@ class _DashboardView extends StatelessWidget {
         if (errorMessage != null) _ErrorBanner(message: errorMessage),
         Text('Tổng quan', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _MetricTile(
-              icon: Icons.trending_up,
-              label: 'Tổng thu',
-              value: formatVnd(dashboard.totalIncome),
+        Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(context).colorScheme.primary,
+                  Theme.of(context).colorScheme.primary.withAlpha(200),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
-            _MetricTile(
-              icon: Icons.trending_down,
-              label: 'Tổng chi',
-              value: formatVnd(dashboard.totalExpense),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Số dư hiện tại',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary.withAlpha(204),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  formatVnd(dashboard.balance),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Divider(color: Colors.white24, height: 1),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.arrow_downward,
+                                size: 16,
+                                color: Colors.greenAccent[100],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Tổng thu (tháng này)',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onPrimary.withAlpha(204),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            formatVnd(dashboard.monthlyIncome),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 40,
+                      color: Colors.white24,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.arrow_upward,
+                                size: 16,
+                                color: Colors.redAccent[100],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Tổng chi (tháng này)',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onPrimary.withAlpha(204),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            formatVnd(dashboard.monthlyExpense),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            _MetricTile(
-              icon: Icons.account_balance_wallet_outlined,
-              label: 'Số dư',
-              value: formatVnd(dashboard.balance),
-            ),
-            _MetricTile(
-              icon: Icons.sync_alt,
-              label: 'Giao dịch',
-              value: dashboard.transactionCount.toString(),
-            ),
-            _MetricTile(
-              icon: Icons.calendar_month_outlined,
-              label: 'Thu tháng này',
-              value: formatVnd(dashboard.monthlyIncome),
-            ),
-            _MetricTile(
-              icon: Icons.event_busy_outlined,
-              label: 'Chi tháng này',
-              value: formatVnd(dashboard.monthlyExpense),
-            ),
-          ],
+          ),
         ),
         const SizedBox(height: 24),
         Text(
@@ -415,14 +496,14 @@ class _DashboardView extends StatelessWidget {
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 12),
-        if (controller.categoryAnalytics.isEmpty)
+        if (state.categoryAnalytics.isEmpty)
           const _EmptyState(
             icon: Icons.donut_large_outlined,
             title: 'Chưa có thống kê danh mục',
             message: 'Các khoản chi sẽ xuất hiện tại đây.',
           )
         else
-          ...controller.categoryAnalytics.map(_CategoryAnalyticsTile.new),
+          ...state.categoryAnalytics.map(_CategoryAnalyticsTile.new),
       ],
     );
   }
@@ -430,7 +511,7 @@ class _DashboardView extends StatelessWidget {
 
 class _TransactionsView extends StatelessWidget {
   const _TransactionsView({
-    required this.controller,
+    required this.state,
     required this.keywordController,
     required this.categoryController,
     required this.typeFilter,
@@ -448,7 +529,7 @@ class _TransactionsView extends StatelessWidget {
     required this.onDelete,
   });
 
-  final HomeController controller;
+  final HomeState state;
   final TextEditingController keywordController;
   final TextEditingController categoryController;
   final TransactionKind? typeFilter;
@@ -479,7 +560,7 @@ class _TransactionsView extends StatelessWidget {
               ),
             ),
             FilledButton.icon(
-              onPressed: controller.isMutating ? null : onAdd,
+              onPressed: state.isMutating ? null : onAdd,
               icon: const Icon(Icons.add),
               label: const Text('Thêm'),
             ),
@@ -492,7 +573,7 @@ class _TransactionsView extends StatelessWidget {
           typeFilter: typeFilter,
           startDate: startDate,
           endDate: endDate,
-          isBusy: controller.isMutating,
+          isBusy: state.isMutating,
           onTypeChanged: onTypeChanged,
           onPickStartDate: onPickStartDate,
           onPickEndDate: onPickEndDate,
@@ -502,14 +583,14 @@ class _TransactionsView extends StatelessWidget {
           onClear: onClearFilter,
         ),
         const SizedBox(height: 16),
-        if (controller.transactions.isEmpty)
+        if (state.transactions.isEmpty)
           const _EmptyState(
             icon: Icons.receipt_long_outlined,
             title: 'Chưa có giao dịch',
             message: 'Tạo giao dịch đầu tiên hoặc đổi bộ lọc tìm kiếm.',
           )
         else
-          ...controller.transactions.map(
+          ...state.transactions.map(
             (transaction) => _TransactionTile(
               transaction: transaction,
               onEdit: () => onEdit(transaction),
@@ -523,8 +604,8 @@ class _TransactionsView extends StatelessWidget {
 
 class _ProfileView extends StatelessWidget {
   const _ProfileView({
-    required this.authController,
-    required this.homeController,
+    required this.authState,
+    required this.homeState,
     required this.profileFormKey,
     required this.passwordFormKey,
     required this.usernameController,
@@ -535,8 +616,8 @@ class _ProfileView extends StatelessWidget {
     required this.onChangePassword,
   });
 
-  final AuthController authController;
-  final HomeController homeController;
+  final AuthState authState;
+  final HomeState homeState;
   final GlobalKey<FormState> profileFormKey;
   final GlobalKey<FormState> passwordFormKey;
   final TextEditingController usernameController;
@@ -548,7 +629,7 @@ class _ProfileView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profile = homeController.profile;
+    final profile = homeState.profile;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -593,8 +674,8 @@ class _ProfileView extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: homeController.isMutating ? null : onUpdateProfile,
-                  icon: homeController.isMutating
+                  onPressed: homeState.isMutating ? null : onUpdateProfile,
+                  icon: homeState.isMutating
                       ? const SizedBox.square(
                           dimension: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
@@ -633,10 +714,10 @@ class _ProfileView extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: authController.isChangingPassword
+                  onPressed: authState.isChangingPassword
                       ? null
                       : onChangePassword,
-                  icon: authController.isChangingPassword
+                  icon: authState.isChangingPassword
                       ? const SizedBox.square(
                           dimension: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
@@ -1023,51 +1104,6 @@ class _FilterPanel extends StatelessWidget {
   }
 }
 
-class _MetricTile extends StatelessWidget {
-  const _MetricTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 292,
-      child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Icon(icon, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: 4),
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _CategoryAnalyticsTile extends StatelessWidget {
   const _CategoryAnalyticsTile(this.item);

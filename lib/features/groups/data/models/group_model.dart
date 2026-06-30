@@ -4,6 +4,7 @@ class GroupMemberModel {
     required this.groupId,
     this.userId,
     this.guestName,
+    this.username,
     required this.role,
   });
 
@@ -11,6 +12,7 @@ class GroupMemberModel {
   final int groupId;
   final int? userId;
   final String? guestName;
+  final String? username; // Only available from some APIs (e.g. balances)
   final String role; // admin, member
 
   factory GroupMemberModel.fromJson(Map<String, dynamic> json) {
@@ -19,6 +21,7 @@ class GroupMemberModel {
       groupId: json['group_id'] as int? ?? 0,
       userId: json['user_id'] as int?,
       guestName: json['guest_name'] as String?,
+      username: json['username'] as String?,
       role: json['role'] as String? ?? 'member',
     );
   }
@@ -29,14 +32,21 @@ class GroupMemberModel {
       'group_id': groupId,
       'user_id': userId,
       'guest_name': guestName,
+      'username': username,
       'role': role,
     };
   }
 
   String get displayName {
+    // Guest member
     if (guestName != null && guestName!.trim().isNotEmpty) {
       return guestName!;
     }
+    // Registered user with username (from some API responses)
+    if (username != null && username!.trim().isNotEmpty) {
+      return username!;
+    }
+    // Fallback
     return 'Thành viên #$id';
   }
 }

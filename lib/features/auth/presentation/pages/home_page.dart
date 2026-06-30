@@ -91,7 +91,9 @@ class _HomePageState extends State<HomePage> {
       _startDateFilter = null;
       _endDateFilter = null;
     });
-    context.read<HomeBloc>().add(const HomeSearchTransactionsRequested(TransactionSearchFilter()));
+    context
+        .read<HomeBloc>()
+        .add(const HomeSearchTransactionsRequested(TransactionSearchFilter()));
   }
 
   Future<void> _pickTransactionFilterDate({required bool isStartDate}) async {
@@ -173,9 +175,9 @@ class _HomePageState extends State<HomePage> {
       homeBloc.add(HomeCreateTransactionRequested(payload));
     } else {
       homeBloc.add(HomeUpdateTransactionRequested(
-            id: transaction.id,
-            payload: payload,
-          ));
+        id: transaction.id,
+        payload: payload,
+      ));
     }
   }
 
@@ -183,9 +185,14 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider(create: (context) => WalletsBloc()..add(const WalletsLoadRequested())),
-        BlocProvider(create: (context) => GoalsBloc()..add(const GoalsLoadRequested())),
-        BlocProvider(create: (context) => GroupsBloc()..add(const GroupsLoadRequested())),
+        BlocProvider(
+            create: (context) =>
+                WalletsBloc()..add(const WalletsLoadRequested())),
+        BlocProvider(
+            create: (context) => GoalsBloc()..add(const GoalsLoadRequested())),
+        BlocProvider(
+            create: (context) =>
+                GroupsBloc()..add(const GroupsLoadRequested())),
       ],
       child: MultiBlocListener(
         listeners: [
@@ -197,7 +204,8 @@ class _HomePageState extends State<HomePage> {
               }
               if (state.successMessage != null) {
                 _showMessage(state.successMessage!);
-                if (state.successMessage == 'Đổi mật khẩu thành công' || state.successMessage!.contains('mật khẩu')) {
+                if (state.successMessage == 'Đổi mật khẩu thành công' ||
+                    state.successMessage!.contains('mật khẩu')) {
                   _oldPasswordController.clear();
                   _newPasswordController.clear();
                 }
@@ -208,7 +216,8 @@ class _HomePageState extends State<HomePage> {
           BlocListener<HomeBloc, HomeState>(
             listenWhen: (previous, current) =>
                 previous.errorMessage != current.errorMessage ||
-                previous.mutationSuccessMessage != current.mutationSuccessMessage ||
+                previous.mutationSuccessMessage !=
+                    current.mutationSuccessMessage ||
                 previous.profile != current.profile,
             listener: (context, state) {
               if (state.errorMessage != null) {
@@ -242,16 +251,26 @@ class _HomePageState extends State<HomePage> {
                         onPressed: isBusy
                             ? null
                             : () {
-                                context.read<HomeBloc>().add(const HomeLoadRequested());
-                                context.read<WalletsBloc>().add(const WalletsLoadRequested());
-                                context.read<GoalsBloc>().add(const GoalsLoadRequested());
-                                context.read<GroupsBloc>().add(const GroupsLoadRequested());
+                                context
+                                    .read<HomeBloc>()
+                                    .add(const HomeLoadRequested());
+                                context
+                                    .read<WalletsBloc>()
+                                    .add(const WalletsLoadRequested());
+                                context
+                                    .read<GoalsBloc>()
+                                    .add(const GoalsLoadRequested());
+                                context
+                                    .read<GroupsBloc>()
+                                    .add(const GroupsLoadRequested());
                               },
                         icon: const Icon(Icons.refresh),
                       ),
                       IconButton(
                         tooltip: 'Đăng xuất',
-                        onPressed: () => context.read<AuthBloc>().add(const AuthLogoutRequested()),
+                        onPressed: () => context
+                            .read<AuthBloc>()
+                            .add(const AuthLogoutRequested()),
                         icon: const Icon(Icons.logout),
                       ),
                     ],
@@ -272,7 +291,8 @@ class _HomePageState extends State<HomePage> {
                                     TransactionsView(
                                       state: homeState,
                                       keywordController: _keywordController,
-                                      categoryController: _categoryFilterController,
+                                      categoryController:
+                                          _categoryFilterController,
                                       typeFilter: _typeFilter,
                                       startDate: _startDateFilter,
                                       endDate: _endDateFilter,
@@ -280,10 +300,12 @@ class _HomePageState extends State<HomePage> {
                                         setState(() => _typeFilter = value);
                                       },
                                       onPickStartDate: () {
-                                        _pickTransactionFilterDate(isStartDate: true);
+                                        _pickTransactionFilterDate(
+                                            isStartDate: true);
                                       },
                                       onPickEndDate: () {
-                                        _pickTransactionFilterDate(isStartDate: false);
+                                        _pickTransactionFilterDate(
+                                            isStartDate: false);
                                       },
                                       onClearStartDate: () {
                                         setState(() => _startDateFilter = null);
@@ -328,11 +350,13 @@ class _HomePageState extends State<HomePage> {
                   floatingActionButton: _selectedIndex == 0
                       ? FloatingActionButton(
                           tooltip: 'Thêm giao dịch',
-                          onPressed: isBusy ? null : () => _showTransactionForm(),
+                          onPressed:
+                              isBusy ? null : () => _showTransactionForm(),
                           child: const Icon(Icons.add),
                         )
                       : null,
-                  floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+                  floatingActionButtonLocation:
+                      FloatingActionButtonLocation.endFloat,
                   bottomNavigationBar: NavigationBar(
                     selectedIndex: _selectedIndex,
                     onDestinationSelected: (index) {

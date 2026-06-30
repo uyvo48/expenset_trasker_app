@@ -248,17 +248,28 @@ class _GroupDetailsViewState extends State<GroupDetailsView> with SingleTickerPr
             ],
           ),
           const SizedBox(height: 12),
-          Expanded(
-            child: ListView.builder(
+          if (members.isEmpty)
+            const EmptyState(
+              icon: Icons.group_outlined,
+              title: 'Chưa có thành viên',
+              message: 'Thêm thành viên vào nhóm để bắt đầu.',
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
               itemCount: members.length,
               itemBuilder: (context, index) {
                 final member = members[index];
                 final isAdmin = member.role == 'admin';
+                final initial = member.displayName.isNotEmpty
+                    ? member.displayName[0].toUpperCase()
+                    : '?';
 
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
-                    child: Text(member.displayName.substring(0, 1).toUpperCase()),
+                    child: Text(initial),
                   ),
                   title: Text(member.displayName),
                   subtitle: Text(isAdmin ? 'Trưởng nhóm' : 'Thành viên'),
@@ -271,7 +282,6 @@ class _GroupDetailsViewState extends State<GroupDetailsView> with SingleTickerPr
                 );
               },
             ),
-          ),
         ],
       ),
     );

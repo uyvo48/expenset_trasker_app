@@ -307,9 +307,41 @@ class GroupsBloc extends Bloc<GroupsEvent, GroupsState> {
 
     try {
       final balances = await _groupsRemoteDataSource.getGroupBalances(event.groupId);
+
+      // Cross-reference: inject usernames from balances into selectedGroup.members
+      // because the group details API doesn't return usernames for registered users
+      GroupModel? updatedGroup = state.selectedGroup;
+      if (updatedGroup != null && updatedGroup.members != null) {
+        // Build a map of memberId -> username from balances
+        final usernameMap = <int, String>{};
+        for (final b in balances) {
+          if (b.username != null && b.username!.trim().isNotEmpty) {
+            usernameMap[b.memberId] = b.username!;
+          }
+        }
+
+        final updatedMembers = updatedGroup.members!.map((m) {
+          final username = usernameMap[m.id];
+          if (username != null && m.username == null) {
+            return GroupMemberModel(
+              id: m.id,
+              groupId: m.groupId,
+              userId: m.userId,
+              guestName: m.guestName,
+              username: username,
+              role: m.role,
+            );
+          }
+          return m;
+        }).toList();
+
+        updatedGroup = updatedGroup.copyWith(members: updatedMembers);
+      }
+
       emit(state.copyWith(
         isBalancesLoading: false,
         balances: balances,
+        selectedGroup: updatedGroup,
       ));
     } on AppException catch (error) {
       AppLogger.error('[GroupsBloc] GroupBalancesLoadRequested AppException', error: error);

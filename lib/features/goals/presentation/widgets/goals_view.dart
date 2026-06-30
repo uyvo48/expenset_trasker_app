@@ -399,7 +399,7 @@ class _GoalFormDialogState extends State<_GoalFormDialog> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: _category,
+                value: _category,
                 decoration: const InputDecoration(
                   labelText: 'Danh mục',
                   prefixIcon: Icon(Icons.category_outlined),

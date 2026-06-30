@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../goals/presentation/bloc/goals_bloc.dart';
 import '../../../goals/presentation/widgets/goals_view.dart';
+import '../../../groups/presentation/bloc/groups_bloc.dart';
+import '../../../groups/presentation/widgets/groups_view.dart';
 import '../../../home/presentation/bloc/home_bloc.dart';
 import '../../../home/presentation/widgets/dashboard_view.dart';
 import '../../../profile/presentation/widgets/profile_view.dart';
@@ -183,6 +185,7 @@ class _HomePageState extends State<HomePage> {
       providers: [
         BlocProvider(create: (context) => WalletsBloc()..add(const WalletsLoadRequested())),
         BlocProvider(create: (context) => GoalsBloc()..add(const GoalsLoadRequested())),
+        BlocProvider(create: (context) => GroupsBloc()..add(const GroupsLoadRequested())),
       ],
       child: MultiBlocListener(
         listeners: [
@@ -242,6 +245,7 @@ class _HomePageState extends State<HomePage> {
                                 context.read<HomeBloc>().add(const HomeLoadRequested());
                                 context.read<WalletsBloc>().add(const WalletsLoadRequested());
                                 context.read<GoalsBloc>().add(const GoalsLoadRequested());
+                                context.read<GroupsBloc>().add(const GroupsLoadRequested());
                               },
                         icon: const Icon(Icons.refresh),
                       ),
@@ -301,6 +305,9 @@ class _HomePageState extends State<HomePage> {
                               const PageShell(
                                 child: GoalsView(),
                               ),
+                              const PageShell(
+                                child: GroupsView(),
+                              ),
                               PageShell(
                                 child: ProfileView(
                                   authState: authState,
@@ -346,6 +353,11 @@ class _HomePageState extends State<HomePage> {
                         icon: Icon(Icons.track_changes_outlined),
                         selectedIcon: Icon(Icons.track_changes),
                         label: 'Mục tiêu',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.groups_outlined),
+                        selectedIcon: Icon(Icons.groups),
+                        label: 'Nhóm',
                       ),
                       NavigationDestination(
                         icon: Icon(Icons.person_outline),

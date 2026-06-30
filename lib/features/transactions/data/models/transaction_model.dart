@@ -117,7 +117,7 @@ class TransactionSearchFilter {
   Map<String, String> toQueryParameters() {
     return {
       if (keyword != null && keyword!.trim().isNotEmpty)
-        'keyword': keyword!.trim(),
+        'q': keyword!.trim(),
       if (category != null && category!.trim().isNotEmpty)
         'category': category!.trim(),
       if (type != null) 'type': type!.apiValue,

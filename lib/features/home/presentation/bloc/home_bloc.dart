@@ -107,12 +107,67 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
 
     try {
       final List<TransactionModel> transactions;
+      final hasKeyword = event.filter.keyword != null && event.filter.keyword!.trim().isNotEmpty;
+
       if (event.filter.isEmpty) {
         transactions = await _transactionsRemoteDataSource.getTransactions();
-      } else {
-        transactions = await _transactionsRemoteDataSource.searchTransactions(
+      } else if (hasKeyword) {
+        // Có từ khóa -> gọi API search của server (với tham số 'q')
+        final rawTransactions = await _transactionsRemoteDataSource.searchTransactions(
           filter: event.filter,
         );
+        transactions = rawTransactions.where((t) {
+          if (event.filter.category != null && event.filter.category!.trim().isNotEmpty) {
+            final filterCat = event.filter.category!.trim().toLowerCase();
+            if (!t.category.toLowerCase().contains(filterCat)) {
+              return false;
+            }
+          }
+          if (event.filter.type != null) {
+            if (t.type != event.filter.type) {
+              return false;
+            }
+          }
+          if (event.filter.startDate != null) {
+            if (t.date != null && t.date!.isBefore(event.filter.startDate!)) {
+              return false;
+            }
+          }
+          if (event.filter.endDate != null) {
+            if (t.date != null && t.date!.isAfter(event.filter.endDate!)) {
+              return false;
+            }
+          }
+          return true;
+        }).toList();
+      } else {
+        // Không có từ khóa tìm kiếm nhưng có lọc theo category, type hoặc date range
+        // -> Gọi getTransactions để lấy tất cả giao dịch, sau đó lọc ở client-side
+        final rawTransactions = await _transactionsRemoteDataSource.getTransactions();
+        transactions = rawTransactions.where((t) {
+          if (event.filter.category != null && event.filter.category!.trim().isNotEmpty) {
+            final filterCat = event.filter.category!.trim().toLowerCase();
+            if (!t.category.toLowerCase().contains(filterCat)) {
+              return false;
+            }
+          }
+          if (event.filter.type != null) {
+            if (t.type != event.filter.type) {
+              return false;
+            }
+          }
+          if (event.filter.startDate != null) {
+            if (t.date != null && t.date!.isBefore(event.filter.startDate!)) {
+              return false;
+            }
+          }
+          if (event.filter.endDate != null) {
+            if (t.date != null && t.date!.isAfter(event.filter.endDate!)) {
+              return false;
+            }
+          }
+          return true;
+        }).toList();
       }
       emit(state.copyWith(
         isMutating: false,

@@ -157,7 +157,7 @@ class TokenRefreshInterceptor extends Interceptor {
   static const _accessTokenKey = 'access_token';
   static const _refreshTokenKey = 'refresh_token';
 
-  bool _isRefreshing = false;
+  Future<String?>? _refreshFuture;
 
   @override
   Future<void> onError(
@@ -168,13 +168,34 @@ class TokenRefreshInterceptor extends Interceptor {
       return handler.next(err);
     }
 
-    // Tránh vòng lặp refresh
-    if (_isRefreshing) {
+    _debugApiLog(
+      '[TokenRefresh] 401 received for ${err.requestOptions.method} ${err.requestOptions.uri}',
+    );
+
+    try {
+      // Nếu chưa có request nào đang refresh, tiến hành refresh
+      _refreshFuture ??= _refreshAccessToken();
+
+      final newAccessToken = await _refreshFuture;
+
+      if (newAccessToken == null) {
+        return handler.next(err);
+      }
+
+      // Retry request gốc với token mới
+      final requestOptions = err.requestOptions;
+      requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
+
+      final retryResponse = await _dio.fetch(requestOptions);
+      return handler.resolve(retryResponse);
+    } on DioException catch (retryError) {
+      return handler.next(retryError);
+    } catch (e) {
       return handler.next(err);
     }
+  }
 
-    _isRefreshing = true;
-
+  Future<String?> _refreshAccessToken() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final refreshToken = prefs.getString(_refreshTokenKey);
@@ -182,15 +203,11 @@ class TokenRefreshInterceptor extends Interceptor {
       if (refreshToken == null || refreshToken.isEmpty) {
         _debugApiLog('[TokenRefresh] Missing refresh token. Session expired.');
         onSessionExpired?.call();
-        return handler.next(err);
+        return null;
       }
 
-      _debugApiLog(
-        '[TokenRefresh] 401 received. Refreshing token for '
-        '${err.requestOptions.method} ${err.requestOptions.uri}',
-      );
+      _debugApiLog('[TokenRefresh] Fetching new access token...');
 
-      // Gọi refresh bằng Dio instance mới (không đi qua interceptor)
       final refreshDio = Dio(BaseOptions(
         baseUrl: ApiConfig.baseUrl,
         headers: {
@@ -208,15 +225,8 @@ class TokenRefreshInterceptor extends Interceptor {
 
       // Lưu token mới
       await prefs.setString(_accessTokenKey, newAccessToken);
-      _debugApiLog(
-          '[TokenRefresh] Token refreshed. Retrying original request.');
-
-      // Retry request gốc với token mới
-      final requestOptions = err.requestOptions;
-      requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
-
-      final retryResponse = await _dio.fetch(requestOptions);
-      return handler.resolve(retryResponse);
+      _debugApiLog('[TokenRefresh] Token refreshed successfully.');
+      return newAccessToken;
     } on DioException catch (refreshError) {
       final statusCode = refreshError.response?.statusCode;
 
@@ -234,9 +244,13 @@ class TokenRefreshInterceptor extends Interceptor {
       _debugApiLog(
         '[TokenRefresh] Refresh request failed: ${refreshError.message}',
       );
-      return handler.next(err);
+      return null;
+    } catch (e) {
+      _debugApiLog('[TokenRefresh] Unexpected error during refresh: $e');
+      return null;
     } finally {
-      _isRefreshing = false;
+      // Dọn dẹp future để lượt tiếp theo có thể chạy lại
+      _refreshFuture = null;
     }
   }
 }

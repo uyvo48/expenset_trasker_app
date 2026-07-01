@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../auth/presentation/widgets/auth_validators.dart';
+
 import '../../../auth/presentation/widgets/shared_widgets.dart';
 import '../../data/models/group_balance_model.dart';
 import '../../data/models/group_bill_model.dart';
@@ -491,77 +491,146 @@ class _AddMemberDialog extends StatefulWidget {
   State<_AddMemberDialog> createState() => _AddMemberDialogState();
 }
 
+enum _MemberType { registered, guest }
+
 class _AddMemberDialogState extends State<_AddMemberDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _userIdController = TextEditingController();
   final _guestNameController = TextEditingController();
 
-  bool _isGuest = false;
+  _MemberType _memberType = _MemberType.guest;
+
+  bool get _isGuest => _memberType == _MemberType.guest;
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _userIdController.dispose();
     _guestNameController.dispose();
     super.dispose();
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    Navigator.pop(context, (
-      email: _isGuest ? null : _emailController.text.trim(),
-      guestName: _isGuest ? _guestNameController.text.trim() : null,
-    ));
+
+    if (_isGuest) {
+      final guestName = _guestNameController.text.trim();
+      if (guestName.isEmpty) return;
+      Navigator.pop(context, (email: null as String?, guestName: guestName));
+    } else {
+      // registered: gửi user_id
+      final userId = _userIdController.text.trim();
+      if (userId.isEmpty) return;
+      // truyền userId qua trường email tạm thời, datasource sẽ map sang user_id
+      Navigator.pop(context, (email: userId, guestName: null as String?));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return AlertDialog(
       title: const Text('Thêm thành viên nhóm'),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: ChoiceChip(
-                    label: const Text('Người dùng hệ thống'),
-                    selected: !_isGuest,
-                    onSelected: (val) => setState(() => _isGuest = !val),
+      content: SizedBox(
+        width: 360,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Mode selector
+              SegmentedButton<_MemberType>(
+                segments: const [
+                  ButtonSegment(
+                    value: _MemberType.registered,
+                    icon: Icon(Icons.person_outlined),
+                    label: Text('User ID'),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ChoiceChip(
-                    label: const Text('Thành viên ảo (Guest)'),
-                    selected: _isGuest,
-                    onSelected: (val) => setState(() => _isGuest = val),
+                  ButtonSegment(
+                    value: _MemberType.guest,
+                    icon: Icon(Icons.person_add_alt_outlined),
+                    label: Text('Thành viên ảo'),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (!_isGuest)
-              TextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Email thành viên',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-                validator: validateEmail,
-              )
-            else
-              TextFormField(
-                controller: _guestNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Tên thành viên khách',
-                  prefixIcon: Icon(Icons.person_outline),
-                ),
-                validator: (val) => (val == null || val.trim().isEmpty) ? 'Vui lòng nhập tên khách' : null,
+                ],
+                selected: {_memberType},
+                onSelectionChanged: (selection) {
+                  setState(() {
+                    _memberType = selection.first;
+                    _userIdController.clear();
+                    _guestNameController.clear();
+                  });
+                },
               ),
-          ],
+              const SizedBox(height: 8),
+              // Description hint
+              Text(
+                _isGuest
+                    ? 'Tạo một thành viên ảo để ghi nợ cho người chưa có tài khoản ứng dụng.'
+                    : 'Nhập User ID của người dùng đã có tài khoản trong hệ thống.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              // Input field
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SizeTransition(sizeFactor: animation, child: child),
+                ),
+                child: _isGuest
+                    ? TextFormField(
+                        key: const ValueKey('guestName'),
+                        controller: _guestNameController,
+                        autofocus: true,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _submit(),
+                        decoration: const InputDecoration(
+                          labelText: 'Tên thành viên khách',
+                          hintText: 'VD: Hoa (Bạn Nam)',
+                          prefixIcon: Icon(Icons.badge_outlined),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Vui lòng nhập tên thành viên khách';
+                          }
+                          if (val.trim().length < 2) {
+                            return 'Tên phải có ít nhất 2 ký tự';
+                          }
+                          return null;
+                        },
+                      )
+                    : TextFormField(
+                        key: const ValueKey('userId'),
+                        controller: _userIdController,
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _submit(),
+                        decoration: const InputDecoration(
+                          labelText: 'User ID',
+                          hintText: 'VD: 5',
+                          prefixIcon: Icon(Icons.tag_outlined),
+                          border: OutlineInputBorder(),
+                          helperText: 'Nhập ID số của người dùng cần thêm',
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Vui lòng nhập User ID';
+                          }
+                          final id = int.tryParse(val.trim());
+                          if (id == null || id <= 0) {
+                            return 'User ID phải là số nguyên dương';
+                          }
+                          return null;
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -569,9 +638,10 @@ class _AddMemberDialogState extends State<_AddMemberDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Hủy'),
         ),
-        FilledButton(
+        FilledButton.icon(
           onPressed: _submit,
-          child: const Text('Thêm'),
+          icon: const Icon(Icons.person_add_outlined, size: 18),
+          label: const Text('Thêm vào nhóm'),
         ),
       ],
     );

@@ -311,17 +311,14 @@ class _WalletDetailsSheet extends StatelessWidget {
 
   void _showInviteDialog(BuildContext context) {
     final walletsBloc = context.read<WalletsBloc>();
-    showDialog<String>(
+    showDialog<void>(
       context: context,
-      builder: (context) => const _InviteMemberDialog(),
-    ).then((email) {
-      if (email != null && email.isNotEmpty) {
-        walletsBloc.add(WalletInviteMemberRequested(
-              walletId: wallet.id,
-              email: email,
-            ));
-      }
-    });
+      barrierDismissible: false,
+      builder: (dialogContext) => BlocProvider.value(
+        value: walletsBloc,
+        child: _InviteMemberDialog(walletId: wallet.id),
+      ),
+    );
   }
 
   @override
@@ -483,7 +480,9 @@ class _WalletDetailsSheet extends StatelessWidget {
 }
 
 class _InviteMemberDialog extends StatefulWidget {
-  const _InviteMemberDialog();
+  const _InviteMemberDialog({required this.walletId});
+
+  final int walletId;
 
   @override
   State<_InviteMemberDialog> createState() => _InviteMemberDialogState();
@@ -492,6 +491,7 @@ class _InviteMemberDialog extends StatefulWidget {
 class _InviteMemberDialogState extends State<_InviteMemberDialog> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  String? _inlineError;
 
   @override
   void dispose() {
@@ -499,37 +499,87 @@ class _InviteMemberDialogState extends State<_InviteMemberDialog> {
     super.dispose();
   }
 
-  void _submit() {
+  void _submit(BuildContext context) {
+    setState(() => _inlineError = null);
     if (!_formKey.currentState!.validate()) return;
-    Navigator.pop(context, _emailController.text.trim());
+    context.read<WalletsBloc>().add(
+          WalletInviteMemberRequested(
+            walletId: widget.walletId,
+            email: _emailController.text.trim(),
+          ),
+        );
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Mời thành viên mới'),
-      content: Form(
-        key: _formKey,
-        child: TextFormField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: 'Email của người nhận',
-            prefixIcon: Icon(Icons.email_outlined),
-          ),
-          validator: validateEmail,
-        ),
+    return BlocListener<WalletsBloc, WalletsState>(
+      listenWhen: (prev, curr) =>
+          prev.isMutating != curr.isMutating ||
+          prev.successMessage != curr.successMessage ||
+          prev.errorMessage != curr.errorMessage,
+      listener: (listenerContext, state) {
+        // Thành công → đóng dialog, để BlocListener bên ngoài hiện SnackBar
+        if (state.successMessage != null) {
+          Navigator.of(listenerContext).pop();
+        }
+        // Lỗi → hiện inline dưới field, không đóng dialog
+        if (state.errorMessage != null) {
+          setState(() => _inlineError = state.errorMessage);
+          listenerContext
+              .read<WalletsBloc>()
+              .add(const WalletsClearMessageRequested());
+        }
+      },
+      child: BlocBuilder<WalletsBloc, WalletsState>(
+        buildWhen: (prev, curr) => prev.isMutating != curr.isMutating,
+        builder: (context, state) {
+          final isLoading = state.isMutating;
+
+          return AlertDialog(
+            title: const Text('Mời thành viên mới'),
+            content: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    enabled: !isLoading,
+                    decoration: InputDecoration(
+                      labelText: 'Email của người nhận',
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      errorText: _inlineError,
+                    ),
+                    validator: validateEmail,
+                    onChanged: (_) {
+                      if (_inlineError != null) {
+                        setState(() => _inlineError = null);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(context),
+                child: const Text('Hủy'),
+              ),
+              FilledButton(
+                onPressed: isLoading ? null : () => _submit(context),
+                child: isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Gửi lời mời'),
+              ),
+            ],
+          );
+        },
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Hủy'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('Gửi lời mời'),
-        ),
-      ],
     );
   }
 }
